@@ -1,7 +1,7 @@
 {
   "name": "caliber-analysis",
   "displayName": "Caliber Analysis",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Analyzes how your team uses Claude Code. Captures session activity — prompts, responses, and tool use — with secrets redacted on your machine before anything is sent, then ships it to your Caliber tenant for AI-governance insights. Bearer-authenticated, idempotent, and non-blocking.",
   "author": {
     "name": "Caliber",
@@ -9,6 +9,11 @@
   },
   "homepage": "https://app.caliber-ai.dev",
   "license": "UNLICENSED",
-  "keywords": ["caliber", "governance", "observability", "telemetry", "claude-code"],
-  "hooks": "./hooks/hooks.json"
+  "keywords": [
+    "caliber",
+    "governance",
+    "observability",
+    "telemetry",
+    "claude-code"
+  ]
 }
