@@ -73,6 +73,16 @@ test("mapLine projects envelope fields and stores the full redacted line", () =>
   assert.doesNotMatch(JSON.stringify(row.content), /sk-ant-api03-ABCDEF/);
 });
 
+test("mapLine resolves repo from the line's cwd via repoFor (null when no cwd)", () => {
+  const repoFor = (cwd) => (cwd === "/work/proj" ? "github.com/acme/proj" : null);
+  const withCwd = mapLine({ uuid: "u1", cwd: "/work/proj" }, "fb", repoFor);
+  assert.equal(withCwd.repo, "github.com/acme/proj");
+
+  // No cwd → repoFor isn't consulted → null. Default repoFor is a no-op.
+  assert.equal(mapLine({ uuid: "u2" }, "fb", repoFor).repo, null);
+  assert.equal(mapLine({ uuid: "u3", cwd: "/work/proj" }, "fb").repo, null);
+});
+
 test("mapLine falls back to a deterministic id when the line has no uuid", () => {
   const line = { type: "pr-link", prNumber: 521, sessionId: "s9", timestamp: "2026-06-28T10:00:00Z" };
   const row = mapLine(line, "fallback");

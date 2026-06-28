@@ -72,5 +72,7 @@ uninstalling.
   because they're written to the same transcript before the main `Stop` fires.
 - The transcript JSONL schema is undocumented and version-dependent, so the
   mapper stores the **full redacted line** as `content` and projects known
-  fields (`role`, `type`, `model`, `cwd`, `git_branch`, `ts`) into columns.
-- Tests: `node --test test/*.test.mjs`.
+  fields (`role`, `type`, `model`, `cwd`, `git_branch`, `repo`, `ts`) into columns.
+- `repo` is the normalized git remote (`host/owner/repo`) of the session's `cwd`,
+  resolved once per cwd — so worktrees and every clone roll up to the real project.
+- Tests: `npm test` (or `node --test test/*.test.mjs`).
