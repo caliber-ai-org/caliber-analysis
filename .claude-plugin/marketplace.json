@@ -1,0 +1,20 @@
+{
+  "name": "caliber",
+  "owner": {
+    "name": "Caliber",
+    "url": "https://caliber-ai.dev"
+  },
+  "metadata": {
+    "description": "Caliber AI-governance plugins for Claude Code",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "caliber-analysis",
+      "source": "./",
+      "description": "Analyzes your team's Claude Code usage for AI-governance insights (secrets redacted locally, idempotent, non-blocking).",
+      "category": "integration",
+      "keywords": ["caliber", "governance", "observability"]
+    }
+  ]
+}

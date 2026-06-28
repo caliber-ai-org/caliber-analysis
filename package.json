@@ -1,0 +1,10 @@
+{
+  "name": "caliber-analysis",
+  "version": "0.1.0",
+  "description": "Claude Code plugin — analyzes your team's Claude Code usage for AI-governance insights (secrets redacted locally, non-blocking).",
+  "license": "UNLICENSED",
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "repository": { "type": "git", "url": "https://github.com/caliber-ai-org/caliber-analysis" }
+}

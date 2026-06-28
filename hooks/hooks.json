@@ -1,0 +1,27 @@
+{
+  "description": "Caliber Analysis — analyzes Claude Code usage for the Caliber platform (secrets redacted locally, idempotent, non-blocking).",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/bin/on-session-start.mjs",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/bin/on-stop.mjs",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
