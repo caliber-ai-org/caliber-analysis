@@ -7,26 +7,22 @@
  * (so the assistant is aware and can answer "is my activity recorded?"
  * truthfully) and echo it to stderr for the user.
  *
- * On the first configured SessionStart we also spawn a detached backfill
- * worker that ships the last week of local Claude Code transcripts — so a
- * freshly installed tenant already has data to analyze. The hook itself stays
- * fire-and-forget: exits 0 no matter what, and stays silent when capture
- * isn't configured.
+ * On each configured SessionStart we also spawn a detached backfill worker.
+ * The worker claims a one-shot lock and no-ops once the last-week seed is done,
+ * so the hook stays fire-and-forget (same pattern as the Stop shipper) and
+ * never imports the shipper stack into the hot path.
  */
 
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { loadConfig } from "../lib/config.mjs";
-import { claimBackfill } from "../lib/backfill.mjs";
 
 const backfillScript = join(dirname(fileURLToPath(import.meta.url)), "..", "lib", "backfill.mjs");
 
 const bail = setTimeout(() => process.exit(0), 2000);
 
-let raw = "";
-process.stdin.setEncoding("utf8");
-process.stdin.on("data", (chunk) => (raw += chunk));
+process.stdin.resume();
 process.stdin.on("end", () => {
   clearTimeout(bail);
   const config = loadConfig();
@@ -42,15 +38,11 @@ process.stdin.on("end", () => {
       }),
     );
 
-    // One-time last-week backfill — claim the lock here, then spawn detached
-    // so concurrent SessionStarts don't kick off duplicate scans.
     try {
-      if (claimBackfill()) {
-        spawn(process.execPath, [backfillScript], {
-          detached: true,
-          stdio: "ignore",
-        }).unref();
-      }
+      spawn(process.execPath, [backfillScript], {
+        detached: true,
+        stdio: "ignore",
+      }).unref();
     } catch {
       // spawn failure must never disrupt the session
     }
