@@ -14,6 +14,11 @@ activity to your Caliber platform tenant for AI-governance insights.
 
 ```
 Claude Code (any OS)
+  ├─ SessionStart (first configured session)
+  │    ├─ disclosure notice
+  │    └─ spawns a detached backfill worker (once)
+  │         └─ ships ~/.claude/projects/*/*.jsonl from the last 7 days
+  │              (same redact + watermark + POST path as live capture)
   └─ Stop hook fires when a turn ends
        └─ spawns a detached worker (the hook returns instantly — never blocks)
             ├─ reads new transcript lines past a per-session byte watermark
@@ -24,7 +29,12 @@ Claude Code (any OS)
 
 - **Non-blocking.** The `Stop` hook reads its input, spawns the shipper detached,
   and exits 0 immediately. A slow or down endpoint can never add latency to your
-  session.
+  session. The one-time historical backfill is the same pattern.
+- **Last-week seed.** On first install, a `SessionStart` backfill ships the last
+  7 days of local Claude Code transcripts (`~/.claude/projects/`) so the tenant
+  already has data to analyze. A marker at
+  `~/.caliber/capture-state/_backfill.json` records completion; delete it to
+  re-run. Per-session watermarks keep the pass idempotent with live capture.
 - **At-least-once + idempotent.** The watermark advances only on an HTTP 2xx, so
   a failed ship is re-sent next turn. Every transcript line carries a `uuid` (or a
   deterministic content hash when it has none), and the server upserts
@@ -64,6 +74,8 @@ uninstalling.
 - **Logs:** `~/.caliber/capture.log` (one JSON line per ship — counts + errors).
 - **Watermarks:** `~/.caliber/capture-state/<session>.json` (byte offset already
   shipped; delete to re-ship a session).
+- **Backfill marker:** `~/.caliber/capture-state/_backfill.json` (one-time
+  last-week seed; delete to re-scan historical transcripts).
 - **Disable:** set `"enabled": false` in the config, or remove the plugin.
 
 ## Scope & limitations (v0)
