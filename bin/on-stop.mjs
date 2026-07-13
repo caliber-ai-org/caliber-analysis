@@ -13,10 +13,16 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-const shipScript = join(dirname(fileURLToPath(import.meta.url)), "..", "lib", "ship.mjs");
+const here = dirname(fileURLToPath(import.meta.url));
+const shipScript = join(here, "..", "lib", "ship.mjs");
+const sweepScript = join(here, "sweep.mjs");
 
 // Hard ceiling so we never hang the hook chain if stdin never closes.
 const bail = setTimeout(() => process.exit(0), 2000);
+
+function detach(args) {
+  spawn(process.execPath, args, { detached: true, stdio: "ignore" }).unref();
+}
 
 let raw = "";
 process.stdin.setEncoding("utf8");
@@ -26,11 +32,14 @@ process.stdin.on("end", () => {
   try {
     const input = JSON.parse(raw);
     if (input.transcript_path && input.session_id) {
-      spawn(
-        process.execPath,
-        [shipScript, "--transcript", input.transcript_path, "--session", input.session_id],
-        { detached: true, stdio: "ignore" },
-      ).unref();
+      detach([shipScript, "--transcript", input.transcript_path, "--session", input.session_id]);
+
+      // Subagent transcripts live in a TEMP directory that the OS clears on
+      // reboot, so capture this session's while they're still guaranteed to be
+      // there. The 5-minute sweeper would also find them, but only if the
+      // machine survives that long — and a session with ten delegated agents
+      // would otherwise lose all of their tokens and tool calls.
+      detach([sweepScript, "--session", input.session_id, "--tasks-only"]);
     }
   } catch {
     // malformed input or spawn failure — stay silent, never disrupt the session

@@ -3,42 +3,46 @@
 A Claude Code plugin that analyzes how your team uses Claude Code, sending session
 activity to your Caliber platform tenant for AI-governance insights.
 
-> **What it captures, transparently:** the full transcript of each turn — your
-> prompts, the assistant's responses, and tool input/output. High-confidence
-> secrets (API keys, tokens, PEM private keys) are **redacted on your machine
-> before anything is sent**. Data lands in your tenant's row-level-security–scoped
-> Postgres, attributed to the email bound to your ingest token. You can pause it
-> any time (`"enabled": false`) or uninstall.
+> **What it captures, transparently:** the full transcript of each session — your
+> prompts, the assistant's responses, tool input/output, and the work done by any
+> subagents it delegated to. High-confidence secrets (API keys, tokens, PEM
+> private keys) are **redacted on your machine before anything is sent**. Data
+> lands in your tenant's row-level-security–scoped Postgres, attributed to the
+> email bound to your ingest token. You can pause it any time
+> (`"enabled": false`) or uninstall.
 
 ## How it works
 
+Two shippers, because one turn-end hook can't see everything:
+
 ```
 Claude Code (any OS)
-  ├─ SessionStart (first configured session)
-  │    ├─ disclosure notice
-  │    └─ spawns a detached backfill worker (once)
-  │         └─ ships ~/.claude/projects/*/*.jsonl from the last 7 days
-  │              (same redact + watermark + POST path as live capture)
-  └─ Stop hook fires when a turn ends
-       └─ spawns a detached worker (the hook returns instantly — never blocks)
-            ├─ reads new transcript lines past a per-session byte watermark
-            ├─ redacts high-confidence secret shapes
-            └─ POST /api/ingest/claude-code/transcript   (Bearer clbi_…)
-                 └─ dedupes on (org, session, message_uuid) → cc_transcript_messages
+  ├─ Stop hook — fires when a turn ends
+  │    └─ spawns detached workers (the hook returns instantly — never blocks)
+  │         ├─ ship.mjs   → this session's new transcript lines
+  │         └─ sweep.mjs --tasks-only
+  │                       → this session's SUBAGENT transcripts, while the
+  │                         temp dir they live in still exists
+  │
+  └─ Sweeper — every 5 minutes (launchd / systemd / schtasks)
+       └─ sweep.mjs → walks EVERY transcript on disk and ships anything past
+                      its watermark: long-running turns, sessions that crashed
+                      before Stop fired, other machines, and the full backlog
+                      that predates the install
+
+  both → POST /api/ingest/claude-code/transcript   (Bearer clbi_…)
+           └─ dedupes on (org, session, message_uuid) → cc_transcript_messages
 ```
 
-- **Non-blocking.** The `Stop` hook reads its input, spawns the shipper detached,
+- **Non-blocking.** The `Stop` hook reads its input, spawns its workers detached,
   and exits 0 immediately. A slow or down endpoint can never add latency to your
-  session. The one-time historical backfill is the same pattern.
-- **Last-week seed.** On first install, a `SessionStart` backfill ships the last
-  7 days of local Claude Code transcripts (`~/.claude/projects/`) so the tenant
-  already has data to analyze. A marker at
-  `~/.caliber/capture-state/_backfill.json` records completion; delete it to
-  re-run. Per-session watermarks keep the pass idempotent with live capture.
-- **At-least-once + idempotent.** The watermark advances only on an HTTP 2xx, so
-  a failed ship is re-sent next turn. Every transcript line carries a `uuid` (or a
-  deterministic content hash when it has none), and the server upserts
-  `ON CONFLICT DO NOTHING` — re-shipping is free, nothing is lost or duplicated.
+  session.
+- **At-least-once + idempotent.** A watermark advances only on an HTTP 2xx, so a
+  failed ship is re-sent next run. Every line carries a `uuid` (or a deterministic
+  content hash when it has none) and the server upserts `ON CONFLICT DO NOTHING`.
+  **This is what makes the two shippers safe to race**: if the hook and the sweeper
+  send the same lines, one copy is stored. The per-stream locks in `lib/locks.mjs`
+  only save bandwidth — correctness never depends on them.
 - **Secret-redacted client-side.** See [`lib/redact.mjs`](lib/redact.mjs).
   Redaction is defense-in-depth, not a guarantee — treat the stored data as
   sensitive and rely on tenant RLS + access controls.
@@ -50,6 +54,18 @@ Claude Code (any OS)
 /plugin marketplace add caliber-ai-org/caliber-analysis
 /plugin install caliber-analysis@caliber
 ```
+
+Then register the 5-minute sweeper (macOS launchd, Linux systemd/cron, Windows
+Scheduled Tasks):
+
+```
+node bin/install-sweeper.mjs      # bin/install-sweeper.mjs --uninstall to remove
+```
+
+This is a deliberate, explicit step — the plugin will not write to your
+LaunchAgents behind your back. **Skipping it is fine**: the `Stop` hook still
+ships every turn. You'd just lose the backfill of past sessions and the tail of
+any session that dies mid-turn.
 
 ## Configure
 
@@ -72,19 +88,35 @@ uninstalling.
 ## Operate
 
 - **Logs:** `~/.caliber/capture.log` (one JSON line per ship — counts + errors).
-- **Watermarks:** `~/.caliber/capture-state/<session>.json` (byte offset already
-  shipped; delete to re-ship a session).
-- **Backfill marker:** `~/.caliber/capture-state/_backfill.json` (one-time
-  last-week seed; delete to re-scan historical transcripts).
+- **Watermarks:** `~/.caliber/capture-state/<key>.json` (bytes already shipped;
+  delete one to re-ship that stream). A session's main transcript and each of its
+  subagent files are separate streams with separate watermarks.
+- **Sweeper state:** `~/.caliber/sweep-state.json` (backfill progress).
 - **Disable:** set `"enabled": false` in the config, or remove the plugin.
 
-## Scope & limitations (v0)
+## Backfill
 
-- Captures the main-agent transcript; subagent (sidechain) lines are included
-  because they're written to the same transcript before the main `Stop` fires.
-- The transcript JSONL schema is undocumented and version-dependent, so the
-  mapper stores the **full redacted line** as `content` and projects known
-  fields (`role`, `type`, `model`, `cwd`, `git_branch`, `repo`, `ts`) into columns.
+On first run the sweeper ships everything already on disk — often hundreds of
+sessions. It is deliberately **rate-limited** (≤20 MB, ≤40 files, ≤90s per run,
+live sessions always before backlog), so a few hundred MB of history drains over
+a couple of hours in the background rather than in one burst. Each run logs what
+it deferred, so a bounded run never reads as "captured everything".
+
+## Scope & limitations
+
+- **Subagents** live in a temp directory (`<tmp>/claude-<uid>/…/tasks/*.output`),
+  not in `~/.claude/projects`. That path is undocumented and version-dependent, so
+  discovery is best-effort: if it moves, subagent capture goes quiet and
+  main-thread capture carries on. It's also **ephemeral** — cleared on reboot —
+  which is why the `Stop` hook captures a session's subagents immediately instead
+  of waiting for the timer.
+- On macOS the temp root is `/private/tmp/claude-<uid>`, which is **not** what
+  `os.tmpdir()` returns (that's the `/var/folders/…` sandbox). `lib/discover.mjs`
+  probes both; don't "simplify" it to one.
+- The transcript JSONL schema is undocumented and version-dependent, so the mapper
+  stores the **full redacted line** as `content` and projects known fields
+  (`role`, `type`, `model`, `cwd`, `git_branch`, `repo`, `ts`, `is_sidechain`,
+  `agent_id`) into columns.
 - `repo` is the normalized git remote (`host/owner/repo`) of the session's `cwd`,
   resolved once per cwd — so worktrees and every clone roll up to the real project.
-- Tests: `npm test` (or `node --test test/*.test.mjs`).
+- Tests: `npm run test:plugins` (or `node --test plugins/caliber-analysis/test/*.test.mjs`).
