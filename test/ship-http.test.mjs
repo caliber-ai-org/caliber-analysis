@@ -13,9 +13,10 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, dirname } from "node:path";
+import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
+import { streamKey } from "../lib/discover.mjs";
 
 const shipScript = join(dirname(fileURLToPath(import.meta.url)), "..", "lib", "ship.mjs");
 
@@ -59,6 +60,16 @@ function runShip(home, transcriptPath, session) {
   });
 }
 
+/**
+ * Where ship.mjs writes the watermark for a transcript. The key identifies the FILE
+ * (project dir + session id), not the session — two worktrees can hold the same
+ * session id, and sharing one watermark made them clobber each other.
+ */
+function statePathOf(home, transcriptPath, sid) {
+  const project = basename(dirname(transcriptPath));
+  return join(home, ".caliber", "capture-state", encodeURIComponent(streamKey(project, sid)) + ".json");
+}
+
 test("ship.mjs POSTs redacted messages, then dedupes a re-run via the watermark", async () => {
   const { server, received } = startMock();
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
@@ -96,7 +107,7 @@ test("ship.mjs POSTs redacted messages, then dedupes a re-run via the watermark"
     assert.doesNotMatch(JSON.stringify(req.body), /sk-ant-api03-FAKE/);
 
     // watermark persisted
-    assert.ok(existsSync(join(home, ".caliber", "capture-state", sid + ".json")));
+    assert.ok(existsSync(statePathOf(home, transcriptPath, sid)));
 
     // re-run: nothing new past the watermark → no second POST
     const r2 = await runShip(home, transcriptPath, sid);
@@ -128,7 +139,7 @@ test("ship.mjs holds the watermark when the endpoint rejects (retry next turn)",
     const r = await runShip(home, transcriptPath, sid);
     assert.equal(r.status, 0, r.stderr);
     // 500 ⇒ watermark NOT written, so the next turn re-ships
-    assert.equal(existsSync(join(home, ".caliber", "capture-state", sid + ".json")), false);
+    assert.equal(existsSync(statePathOf(home, transcriptPath, sid)), false);
   } finally {
     server.close();
   }

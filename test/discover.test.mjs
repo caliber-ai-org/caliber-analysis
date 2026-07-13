@@ -19,14 +19,14 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { listMainTranscripts, listAgentTranscripts, discoverAll } from "../lib/discover.mjs";
+import { listMainTranscripts, listAgentTranscripts, discoverAll, streamKey} from "../lib/discover.mjs";
 
 function scratch() {
   return mkdtempSync(join(tmpdir(), "caliber-discover-"));
 }
 
 describe("listMainTranscripts", () => {
-  test("finds every session jsonl and keys it by session id", () => {
+  test("finds every session jsonl and keys it by FILE, not by session id", () => {
     const root = scratch();
     try {
       mkdirSync(join(root, "-Users-me-proj"), { recursive: true });
@@ -36,7 +36,42 @@ describe("listMainTranscripts", () => {
 
       const found = listMainTranscripts(root);
       assert.deepEqual(found.map((f) => f.sessionId).sort(), ["sess-a", "sess-b"]);
-      assert.deepEqual(found.map((f) => f.key).sort(), ["sess-a", "sess-b"]);
+      // The key is per-FILE (project-scoped), and the legacy session-id key is kept
+      // so an existing watermark can be adopted instead of re-shipping everything.
+      assert.deepEqual(
+        found.map((f) => f.key).sort(),
+        ["sess-a", "sess-b"].map((s) => streamKey("-Users-me-proj", s)).sort(),
+      );
+      assert.deepEqual(found.map((f) => f.legacyKey).sort(), ["sess-a", "sess-b"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("gives the SAME session id in two worktrees two DIFFERENT watermarks", () => {
+    // The bug this exists to prevent, and it was live in v0.2.0.
+    //
+    // Resume a session inside a git worktree and Claude Code writes a transcript
+    // with the SAME session id into that worktree's project directory. Keying the
+    // watermark on the session id made those files share one watermark and clobber
+    // each other: the real 68MB transcript shipped and recorded offset 71500273,
+    // then a 113-byte worktree stub of the same session id shipped and overwrote it
+    // with offset 113. Next run the big file looked unshipped and re-sent all 68MB
+    // — every sweep, forever. Worktrees are a normal Claude Code workflow (this
+    // repo's own CLAUDE.md recommends them), so it is not an exotic case.
+    const root = scratch();
+    try {
+      mkdirSync(join(root, "-Users-me-proj"), { recursive: true });
+      mkdirSync(join(root, "-Users-me-proj--worktrees-feature"), { recursive: true });
+      writeFileSync(join(root, "-Users-me-proj", "same-id.jsonl"), "{}\n");
+      writeFileSync(join(root, "-Users-me-proj--worktrees-feature", "same-id.jsonl"), "{}\n");
+
+      const found = listMainTranscripts(root);
+      assert.equal(found.length, 2);
+      assert.ok(found.every((f) => f.sessionId === "same-id"), "same session id");
+
+      const keys = new Set(found.map((f) => f.key));
+      assert.equal(keys.size, 2, "two files must never share one watermark");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -70,6 +105,10 @@ describe("listAgentTranscripts", () => {
       // another's bytes entirely.
       assert.deepEqual(
         found.map((f) => f.key).sort(),
+        ["a1", "a2"].map((a) => streamKey("-Users-me-proj", "parent-session", a)).sort(),
+      );
+      assert.deepEqual(
+        found.map((f) => f.legacyKey).sort(),
         ["sub:parent-session:a1", "sub:parent-session:a2"],
       );
     } finally {
