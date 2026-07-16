@@ -32,6 +32,7 @@ const STATUSLINE = join(HERE, "statusline.mjs");
 const INSTALL_DISTILL = join(HERE, "install-distill.mjs");
 const BACKFILL = join(HERE, "backfill-quality.mjs");
 const UNINSTALL = process.argv.includes("--uninstall");
+const RESTORE_STATUSLINE = process.argv.includes("--restore-statusline");
 
 function out(obj) {
   process.stdout.write(JSON.stringify(obj, null, 2) + "\n");
@@ -70,8 +71,16 @@ async function enable() {
   }
   if (existsSync(SETTINGS)) copyFileSync(SETTINGS, `${SETTINGS}.pre-caliber-brain`);
 
+  // autoMemoryDirectory is the brain's load mechanism — it must point at the brain dir. If
+  // the user already had a DIFFERENT one, surface it (it's backed up; uninstall restores it)
+  // instead of clobbering silently.
+  const priorAutoMem = settings.autoMemoryDirectory ?? null;
+  const autoMemoryReplaced = priorAutoMem && priorAutoMem !== BRAIN_DIR ? priorAutoMem : null;
   settings.autoMemoryDirectory = BRAIN_DIR;
-  settings.statusLine = { type: "command", command: `node ${STATUSLINE}` };
+
+  // NEVER touch the user's statusLine. Overwriting their prompt config without consent is
+  // exactly the wrong thing to do; the brain's readout is available without it (the
+  // end-of-turn line, /caliber-analysis:wiki-value, and the Caliber page). Leave it alone.
   writeFileSync(SETTINGS, JSON.stringify(settings, null, 2) + "\n");
 
   // Capture the `claude` path now (the daemon can't see the interactive PATH), then install
@@ -87,7 +96,7 @@ async function enable() {
   try {
     const res = await fetch(`${config.endpoint}/api/brain/activate`, {
       method: "POST",
-      headers: { authorization: `Bearer ${config.token}` },
+      headers: { authorization: `Bearer ${config.token}`, "x-caliber-email": config.email },
     });
     if (res.ok) activatedAt = (await res.json())?.activatedAt ?? null;
   } catch {
@@ -102,16 +111,18 @@ async function enable() {
     ok: true,
     action: "enabled",
     brainDir: BRAIN_DIR,
-    statusLine: `node ${STATUSLINE}`,
+    statusLine: "not modified (your existing statusLine is left untouched)",
+    autoMemoryReplaced,
     claudePath,
     distillDaemon: daemon,
     pulled: pull ? { enabled: pull.enabled, pageCount: pull.pageCount, newPages: pull.newSlugs.length } : null,
     activatedAt,
     note:
-      "Enabled. autoMemoryDirectory + statusLine merged into ~/.claude/settings.json (backup at " +
-      ".pre-caliber-brain). Distillation runs on THIS machine using your Claude Code quota " +
-      "(~1-2 small calls/day); the brain loads from your NEXT session on. Your friction 'before' " +
-      "trend is backfilling in the background.",
+      "Enabled. Only autoMemoryDirectory was set in ~/.claude/settings.json (backup at " +
+      ".pre-caliber-brain); your statusLine was NOT touched. Distillation runs on THIS machine using " +
+      "your Claude Code quota (~1-2 small calls/day); the brain loads from your NEXT session on. Your " +
+      "friction 'before' trend is backfilling in the background." +
+      (autoMemoryReplaced ? ` NOTE: replaced your existing autoMemoryDirectory (${autoMemoryReplaced}); uninstall restores it.` : ""),
   });
 }
 
@@ -142,7 +153,30 @@ function uninstall() {
   });
 }
 
-(UNINSTALL ? Promise.resolve(uninstall()) : enable()).catch((e) => {
+/**
+ * Restore the user's original statusLine from the backup, keeping the brain intact — for
+ * anyone whose statusLine was overwritten by an older build of setup that used to set it.
+ */
+function restoreStatusline() {
+  const settings = readJson(SETTINGS, {});
+  const backup = readJson(BACKUP, null);
+  if (!backup) {
+    out({ ok: false, error: "No brain-setup backup found (~/.caliber/brain-setup-backup.json) — nothing to restore." });
+    return;
+  }
+  if (backup.had_statusLine) settings.statusLine = backup.statusLine;
+  else delete settings.statusLine;
+  writeFileSync(SETTINGS, JSON.stringify(settings, null, 2) + "\n");
+  out({
+    ok: true,
+    action: "restore-statusline",
+    statusLine: settings.statusLine ?? null,
+    note: "Restored your original statusLine from the backup. The brain (autoMemoryDirectory) is unchanged.",
+  });
+}
+
+const run = RESTORE_STATUSLINE ? Promise.resolve(restoreStatusline()) : UNINSTALL ? Promise.resolve(uninstall()) : enable();
+run.catch((e) => {
   out({ ok: false, error: String(e) });
   process.exit(1);
 });

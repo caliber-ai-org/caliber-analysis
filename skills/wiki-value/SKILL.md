@@ -26,7 +26,7 @@ session), **new** (pages the last distill/pull added), and total pages.
 Fetch the before/after scorecard from Caliber (same identity the plugin ships with):
 
 ```
-node -e "import('${CLAUDE_PLUGIN_ROOT}/lib/config.mjs').then(async ({loadConfig}) => { const c = loadConfig(); if(!c){console.log('{}');return;} const r = await fetch(c.endpoint + '/api/brain/impact', { headers: { authorization: 'Bearer ' + c.token } }).catch(()=>null); console.log(r && r.ok ? await r.text() : '{}'); })"
+node -e "import('${CLAUDE_PLUGIN_ROOT}/lib/config.mjs').then(async ({loadConfig}) => { const c = loadConfig(); if(!c){console.log('{}');return;} const r = await fetch(c.endpoint + '/api/brain/impact', { headers: { authorization: 'Bearer ' + c.token, 'x-caliber-email': c.email } }).catch(()=>null); console.log(r && r.ok ? await r.text() : '{}'); })"
 ```
 
 It returns before/after deltas (friction, tool-calls/session, turns/session, calls-saved,

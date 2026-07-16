@@ -25,7 +25,7 @@ import { buildDistillPrompt, DISTILL_SCHEMA } from "../lib/distiller.mjs";
 import { ask, RateLimited, LLMError } from "../lib/llm.mjs";
 import { readLocalPages, mergePages, writeLocalBrain } from "../lib/store.mjs";
 import { sessionValue } from "../lib/value.mjs";
-import { BRAIN_DIR, pushBrain, brainActivatedAt, noteLocalPages } from "../lib/brain.mjs";
+import { BRAIN_DIR, pushBrain, pullBrain, activateBrain, brainActivatedAt, noteLocalPages } from "../lib/brain.mjs";
 
 const DISTILL_STATE = join(CALIBER_DIR, "distill-state");
 const LEDGER = join(DISTILL_STATE, "ledger.json");
@@ -143,8 +143,15 @@ async function main() {
   if (!acquireLock()) { log("another distiller tick holds the lock; skipping"); return; }
 
   try {
-    const activatedAt = brainActivatedAt();
-    if (!activatedAt) { log("brain not activated (setup not run); skipping distill"); return; }
+    let activatedAt = brainActivatedAt();
+    if (!activatedAt) {
+      // This daemon exists only because setup ran (consent given). If activation never
+      // stamped (a transient setup-time failure), heal it: stamp it now (idempotent) and
+      // refresh the manifest so brainActivatedAt() picks it up.
+      const stamped = await activateBrain(config);
+      if (stamped) { await pullBrain(config).catch(() => null); activatedAt = brainActivatedAt() || stamped; }
+    }
+    if (!activatedAt) { log("brain not activated yet (activation not confirmed); skipping distill"); return; }
     const activatedMs = Date.parse(activatedAt);
     const today = new Date().toISOString().slice(0, 10);
     const now = Date.now();

@@ -16,9 +16,10 @@ Tell the user, in your own words, exactly what enabling the brain does:
 - **It distills on THIS machine using their own Claude Code login** — about 1–2 small
   `claude -p` calls a day, on their own quota. No API key, nothing sent to a third party for
   the model call; a ~15-min background daemon does it off the session path.
-- It sets a `statusLine` showing what the brain did for them each session (pages used, MCP
-  calls saved), and records that they turned it on (the before/after marker for the "are
-  your sessions improving?" trend on their Caliber page).
+- It records that they turned it on (the before/after marker for the "are your sessions
+  improving?" trend on their Caliber page). It does **NOT** touch their `statusLine` or any
+  other setting — the brain's per-session readout is available via the end-of-turn line,
+  `/caliber-analysis:wiki-value`, and the Caliber page.
 - Their existing settings and hooks are preserved; the prior `autoMemoryDirectory` /
   `statusLine` values are backed up and fully restored by uninstall.
 - It is **reversible**: uninstall restores their settings and stops the daemon (no more
