@@ -19,11 +19,6 @@
             "type": "command",
             "command": "node ${CLAUDE_PLUGIN_ROOT}/bin/on-stop.mjs",
             "timeout": 10
-          },
-          {
-            "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/bin/on-stop-brain.mjs",
-            "timeout": 10
           }
         ]
       }

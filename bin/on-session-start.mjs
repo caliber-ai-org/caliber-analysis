@@ -10,15 +10,13 @@
  */
 
 import { loadConfig } from "../lib/config.mjs";
-import { pullBrain } from "../lib/brain.mjs";
-import { persistClaudePath } from "../lib/llm.mjs";
 
-const bail = setTimeout(() => process.exit(0), 8000);
+const bail = setTimeout(() => process.exit(0), 2000);
 
 let raw = "";
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", (chunk) => (raw += chunk));
-process.stdin.on("end", async () => {
+process.stdin.on("end", () => {
   clearTimeout(bail);
   const config = loadConfig();
   if (config) {
@@ -32,24 +30,6 @@ process.stdin.on("end", async () => {
         hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: notice },
       }),
     );
-
-    // Capture the `claude` binary path while we can see the user's PATH — the distill daemon
-    // runs from launchd/systemd, which does NOT inherit the interactive shell PATH, so it
-    // needs this stashed path to invoke `claude -p`.
-    try {
-      persistClaudePath();
-    } catch {
-      /* ignore */
-    }
-
-    // Re-hydrate the local brain from Caliber (non-destructive: fresh machine / second
-    // device). On the authoring machine the local distiller owns page contents; this only
-    // fills gaps and refreshes the router + activation marker. Best-effort, non-fatal.
-    try {
-      await pullBrain(config);
-    } catch {
-      /* offline / not a pilot user — stay silent */
-    }
   }
   process.exit(0);
 });

@@ -67,6 +67,22 @@ LaunchAgents behind your back. **Skipping it is fine**: the `Stop` hook still
 ships every turn. You'd just lose the backfill of past sessions and the tail of
 any session that dies mid-turn.
 
+## Updating from 0.4.x (personal brain retired)
+
+v0.5.0 removes the personal brain / wiki pilot. Capture + Troubleshooting only.
+
+```
+/plugin marketplace update caliber
+/plugin update caliber-analysis@caliber
+```
+
+If you ran `brain-setup` on 0.4.x, also clean local state:
+
+- Stop/uninstall the `caliber-brain-distill` LaunchAgent/systemd unit
+- Remove `autoMemoryDirectory` pointing at `~/.caliber/brain` from `~/.claude/settings.json`
+- Optional: `rm -rf ~/.caliber/brain`
+- Keep `~/.caliber/capture*` (session capture)
+
 ## Configure
 
 The plugin reads `~/.caliber/capture.json`, falling back to the dogfood
