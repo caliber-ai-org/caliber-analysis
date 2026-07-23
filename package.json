@@ -1,6 +1,6 @@
 {
   "name": "caliber-analysis",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Claude Code plugin — captures full sessions (prompts, responses, tool use, subagents) for AI-governance insights. Secrets redacted locally; idempotent and non-blocking.",
   "license": "UNLICENSED",
   "scripts": {
