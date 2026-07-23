@@ -1,0 +1,27 @@
+test/resolve-email.test.mjs
+  s_fa14551ea30359::t_9841050b964a65 1-136
+lib/config.mjs
+  s_fa14551ea30359::t_9841050b964a65 9-12,15,18,23,48-60,77-86
+README.md
+  s_fa14551ea30359::t_9841050b964a65 100-115
+.claude-plugin/plugin.json
+  s_fa14551ea30359::t_9841050b964a65 4-5,10,17-18
+lib/resolve-email.mjs
+  s_fa14551ea30359::t_9841050b964a65 1-62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "8ea853a0249450f1eed9fc14e26c9a304419dd16",
+  "prompts": {},
+  "sessions": {
+    "s_fa14551ea30359": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "3e4e8029-d9f5-4694-a9c4-a6e6b6f39869",
+        "model": "default"
+      },
+      "human_author": "Alon Peslin <alonp2098@gmail.com>"
+    }
+  }
+}
