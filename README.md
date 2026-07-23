@@ -97,9 +97,22 @@ Labs captures with no extra setup. To configure explicitly:
 }
 ```
 
-`chmod 600 ~/.caliber/capture.json`. The `token` is a user-bound Caliber ingest
-token (minted by the platform). Set `"enabled": false` to pause capture without
-uninstalling.
+`chmod 600 ~/.caliber/capture.json`. The `token` may be user-bound or
+**org-scoped** (MDM fleet). For org tokens, `email` may be omitted at install
+time; the plugin then resolves identity in order: Claude login
+(`~/.claude.json` → `oauthAccount.emailAddress`), `CALIBER_EMAIL`, then
+`git config --global user.email`, and persists the result into `capture.json`.
+Set `"enabled": false` to pause capture without uninstalling.
+
+### MDM fleet install
+
+Admins mint one org token in Caliber (Settings → Caliber Analysis MDM) and push:
+
+```bash
+curl -fsSL https://app.trycaliber.ai/install/caliber | sh -s -- "$ORG_INGEST_TOKEN"
+```
+
+That installs Caliber Code + this plugin.
 
 ## Operate
 
