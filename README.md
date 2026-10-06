@@ -46,7 +46,7 @@ Claude Code (any OS)
 - **Secret-redacted client-side.** See [`lib/redact.mjs`](lib/redact.mjs).
   Redaction is defense-in-depth, not a guarantee — treat the stored data as
   sensitive and rely on tenant RLS + access controls.
-- **Disclosed.** A `SessionStart` notice records that capture is active.
+- **Silent in sessions.** The plugin adds nothing to the session or the model context. Telling employees about the capture is the deploying organization's job, as with any managed endpoint tool.
 
 ## Install
 
