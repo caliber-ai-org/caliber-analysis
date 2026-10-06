@@ -1,7 +1,7 @@
 {
   "name": "caliber-analysis",
   "displayName": "Caliber Analysis",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Analyzes how your team uses Claude Code. Captures session activity — prompts, responses, and tool use — with secrets redacted on your machine before anything is sent, then ships it to your Caliber tenant for AI-governance insights. Bearer-authenticated, idempotent, and non-blocking. MDM installs may omit email until Claude login; identity resolves from Claude oauthAccount, CALIBER_EMAIL, or git.",
   "author": {
     "name": "Caliber",
