@@ -30,6 +30,7 @@ import { shipFile, statePathFor, readOffset, logLine, argOf } from "../lib/ship.
 import { discoverAll, listAgentTranscripts } from "../lib/discover.mjs";
 import { acquire, release } from "../lib/locks.mjs";
 import { makeRepoResolver } from "../lib/repo.mjs";
+import { noteFailure, maybeReport } from "../lib/health.mjs";
 
 /**
  * Per-run budget. A first run on a laptop with years of history has ~450MB to
@@ -204,5 +205,14 @@ async function main() {
 }
 
 main()
-  .catch((err) => log({ ok: false, fatal: String(err?.message || err) }))
+  .catch(async (err) => {
+    log({ ok: false, fatal: String(err?.message || err) });
+    noteFailure("hook_crash", String(err?.message || err));
+    try {
+      const config = loadConfig();
+      if (config) await maybeReport(config);
+    } catch {
+      // best-effort
+    }
+  })
   .finally(() => process.exit(0)); // never surface a non-zero exit to a scheduler
