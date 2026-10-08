@@ -118,6 +118,44 @@ test("ship.mjs POSTs redacted messages, then dedupes a re-run via the watermark"
   }
 });
 
+test("ship.mjs retries 503 Retry-After and advances the watermark on eventual 2xx", async () => {
+  let hits = 0;
+  const server = createServer((req, res) => {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      hits += 1;
+      if (hits < 3) {
+        res.writeHead(503, { "retry-after": "0" });
+        res.end("busy");
+        return;
+      }
+      const parsed = JSON.parse(body);
+      res.writeHead(202, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, accepted: true, received: parsed.messages.length }));
+    });
+  });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  const port = server.address().port;
+  const home = isolatedHome(`http://127.0.0.1:${port}`);
+
+  const sid = "e2e-http-503";
+  const transcriptPath = join(home, "t.jsonl");
+  writeFileSync(
+    transcriptPath,
+    JSON.stringify({ uuid: "u1", sessionId: sid, message: { role: "user", content: "x" } }) + "\n",
+  );
+
+  try {
+    const r = await runShip(home, transcriptPath, sid);
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(hits, 3);
+    assert.ok(existsSync(statePathOf(home, transcriptPath, sid)));
+  } finally {
+    server.close();
+  }
+});
+
 test("ship.mjs holds the watermark when the endpoint rejects (retry next turn)", async () => {
   const server = createServer((req, res) => {
     let body = "";

@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 
 import { redactString, redactDeep } from "../lib/redact.mjs";
 import { mapLine, stableId, sliceCompleteLines, parseLines } from "../lib/transcript.mjs";
-import { shipFromBuffer, readOffset, writeOffset } from "../lib/ship.mjs";
+import { shipFromBuffer, readOffset, writeOffset, ingestRetryDelayMs } from "../lib/ship.mjs";
 import { CAPTURE_EPOCH } from "../lib/config.mjs";
 import { writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -226,6 +226,15 @@ test("shipFromBuffer ships nothing when the offset is already at EOF", async () 
   assert.equal(sink.length, 0);
 });
 
+test("ingestRetryDelayMs honors Retry-After seconds and defaults to 2s", () => {
+  assert.equal(ingestRetryDelayMs("2"), 2000);
+  assert.equal(ingestRetryDelayMs("1.5"), 1500);
+  assert.equal(ingestRetryDelayMs("0"), 0);
+  assert.equal(ingestRetryDelayMs(null), 2000);
+  assert.equal(ingestRetryDelayMs("nope"), 2000);
+  assert.equal(ingestRetryDelayMs("999"), 30000);
+});
+
 test("shipFromBuffer does NOT advance the offset when the POST fails (retry next turn)", async () => {
   const buf = transcript([{ uuid: "u1", message: { role: "user", content: "x" } }]);
   const failPost = async () => ({ ok: false, status: 500 });
@@ -344,4 +353,19 @@ test("a single line larger than the byte cap still ships (no stall)", () => {
   const huge = JSON.stringify({ type: "assistant", text: "x".repeat(200_000) });
   const { lines } = sliceCompleteLines(huge + "\n", 2000, 1000);
   assert.equal(lines.length, 1);
+});
+
+test("the plugin registers only the Stop capture hook, and its script exists", async () => {
+  // Capture only: no SessionStart notice in the user's session or the model context,
+  // and no brain hooks. A hook whose script is missing fails on every turn.
+  const { readFileSync, existsSync } = await import("node:fs");
+  const { fileURLToPath } = await import("node:url");
+  const root = fileURLToPath(new URL("..", import.meta.url));
+  const { hooks } = JSON.parse(readFileSync(join(root, "hooks", "hooks.json"), "utf8"));
+  assert.deepEqual(Object.keys(hooks), ["Stop"]);
+  const commands = hooks.Stop.flatMap((h) => h.hooks.map((x) => x.command));
+  assert.deepEqual(commands, ["node ${CLAUDE_PLUGIN_ROOT}/bin/on-stop.mjs"]);
+  for (const c of commands) {
+    assert.ok(existsSync(join(root, c.split("${CLAUDE_PLUGIN_ROOT}/")[1])), `${c} points at a missing file`);
+  }
 });
